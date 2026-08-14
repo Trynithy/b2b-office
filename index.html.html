@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B2B L'office — back-to-back NBA 2026-27</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#091214;
+    --panel:#0F1E22;
+    --panel-2:#132a30;
+    --line:#22403f;
+    --oak:#D9A05B;
+    --oak-dim:#8a6a3f;
+    --chalk:#EDF2EF;
+    --mute:#7E9491;
+    --hot:#FF5A4E;
+    --display:"Oswald","Haettenschweiler","Arial Narrow",sans-serif;
+    --body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--ink);color:var(--chalk);font-family:var(--body);
+    font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:860px;margin:0 auto;padding:0 18px 80px}
+
+  /* ---------- header : planches de parquet ---------- */
+  header.top{
+    border-bottom:1px solid var(--line);
+    background:
+      repeating-linear-gradient(90deg,rgba(217,160,91,.09) 0 1px,transparent 1px 46px),
+      linear-gradient(180deg,#12262a 0%,var(--ink) 100%);
+  }
+  .top-in{max-width:860px;margin:0 auto;padding:26px 18px 20px}
+  h1{
+    font-family:var(--display);font-weight:600;text-transform:uppercase;
+    font-size:clamp(38px,9vw,68px);line-height:.92;letter-spacing:-.01em;margin:0;
+  }
+  h1 .of{color:var(--oak)}
+  .kicker{
+    font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--mute);margin:0 0 10px
+  }
+  .lede{margin:12px 0 0;max-width:52ch;color:#BFD0CC}
+
+  /* ---------- barre de commande ---------- */
+  .bar{
+    display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;
+    margin:18px 0 0;padding:14px;border:1px solid var(--line);
+    background:var(--panel);border-radius:2px
+  }
+  .field{display:flex;flex-direction:column;gap:5px}
+  label{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+  select,input[type=time],input[type=date]{
+    font-family:var(--mono);font-size:14px;background:#0a1a1d;color:var(--chalk);
+    border:1px solid var(--line);border-radius:2px;padding:7px 8px
+  }
+  button{
+    font-family:var(--mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;
+    background:var(--oak);color:#14231f;border:0;border-radius:2px;padding:9px 14px;cursor:pointer
+  }
+  button.ghost{background:transparent;color:var(--oak);border:1px solid var(--oak-dim)}
+  button:focus-visible,select:focus-visible,input:focus-visible,.b2b:focus-visible{outline:2px solid var(--oak);outline-offset:2px}
+
+  .status{font-family:var(--mono);font-size:12px;color:var(--mute);margin:10px 0 0}
+  .status b{color:var(--oak);font-weight:600}
+  .status.err{color:var(--hot)}
+
+  /* ---------- écran de chargement / import ---------- */
+  .setup{border:1px solid var(--line);background:var(--panel);padding:18px;margin:22px 0;border-radius:2px}
+  .setup h2{font-family:var(--display);text-transform:uppercase;font-size:20px;letter-spacing:.04em;margin:0 0 8px}
+  .setup ol{margin:8px 0 0;padding-left:20px;color:#BFD0CC}
+  .setup code{font-family:var(--mono);font-size:12px;background:#0a1a1d;border:1px solid var(--line);padding:1px 5px;border-radius:2px}
+
+  /* ---------- sections par date ---------- */
+  .day{margin:34px 0 0}
+  .day-head{
+    display:flex;align-items:baseline;gap:12px;
+    border-bottom:2px solid var(--oak-dim);padding-bottom:6px
+  }
+  .day-date{font-family:var(--display);text-transform:uppercase;font-size:26px;letter-spacing:.03em;color:var(--oak)}
+  .day-count{font-family:var(--mono);font-size:11px;color:var(--mute);margin-left:auto}
+  .badge{
+    font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+    background:var(--oak);color:#14231f;padding:3px 7px;border-radius:2px;white-space:nowrap
+  }
+  .badge.soon{background:transparent;color:var(--oak);border:1px solid var(--oak-dim)}
+
+  .b2b{
+    width:100%;text-align:left;display:flex;align-items:center;gap:12px;
+    background:transparent;border:0;border-bottom:1px solid #17302f;
+    padding:13px 4px;cursor:pointer;color:var(--chalk);border-radius:0
+  }
+  .b2b:hover{background:#0e2124}
+  .b2b .num{font-family:var(--mono);font-size:11px;color:var(--oak-dim);width:22px;flex:none}
+
+  /* ---------- regroupement par heure ---------- */
+  .hour{
+    display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+    margin:20px 0 2px;padding:0 0 5px;border-bottom:1px solid var(--line)
+  }
+  .hour .hh{
+    font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums;
+    font-size:30px;line-height:1;color:var(--oak)
+  }
+  .b2b .team{font-family:var(--display);text-transform:uppercase;font-size:20px;letter-spacing:.02em;line-height:1.1}
+  .b2b .vs{font-family:var(--mono);font-size:12px;color:var(--mute)}
+  .b2b .tag{
+    margin-left:auto;flex:none;font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--hot);border:1px solid rgba(255,90,78,.4);
+    padding:3px 6px;border-radius:2px;white-space:nowrap
+  }
+  .b2b .chev{flex:none;color:var(--oak);font-family:var(--mono);font-size:13px}
+
+  /* ---------- fiche match ---------- */
+  .card{
+    border:1px solid var(--line);border-top:0;background:var(--panel);
+    padding:18px;margin:0 0 6px;animation:in .18s ease-out
+  }
+  @keyframes in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.card{animation:none}}
+  .match{font-family:var(--display);text-transform:uppercase;font-size:clamp(20px,5vw,28px);line-height:1.1;margin:0}
+  .match .at{color:var(--mute);font-size:.6em;letter-spacing:.1em;padding:0 .35em}
+  .rows{margin:14px 0 0;display:grid;gap:8px}
+  .row{display:flex;gap:10px;font-size:14px;align-items:baseline}
+  .row .k{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);width:120px;flex:none;padding-top:3px}
+  .row .v{color:#DCE7E4}
+  .row .v .host{color:var(--oak);font-weight:500}
+
+  /* signature : l'heure d'office */
+  .office{
+    margin:18px 0 0;border:1px solid var(--oak-dim);background:var(--panel-2);
+    padding:14px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap
+  }
+  .office .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--oak);max-width:210px;line-height:1.5}
+  .office .big{
+    font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums;
+    font-size:clamp(46px,13vw,74px);line-height:.9;color:var(--oak);margin-left:auto
+  }
+  .office .big small{font-size:.3em;letter-spacing:.1em;color:var(--mute);display:block;text-align:right;margin-top:6px}
+
+  footer{margin:60px 0 0;padding-top:18px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--mute);line-height:1.8}
+  .hidden{display:none!important}
+  @media(max-width:520px){
+    .row .k{width:92px}
+    .office .big{margin-left:0}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <p class="kicker">Saison NBA 2026-27 · seconds soirs</p>
+    <h1>B2B<br>L'<span class="of">office</span></h1>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="bar" id="bar">
+    <div class="field">
+      <label for="refTime">Heure locale de référence</label>
+      <input type="time" id="refTime" value="13:30" step="300">
+    </div>
+    <div class="field">
+      <label for="teamSel">Équipe</label>
+      <select id="teamSel"><option value="">Toutes</option></select>
+    </div>
+    <div class="field">
+      <label for="fromDate">À partir du</label>
+      <input type="date" id="fromDate">
+    </div>
+    <button id="todayBtn">Aujourd'hui</button>
+    <button class="ghost" id="allBtn">Toute la saison</button>
+    <button class="ghost" id="reload">Recharger</button>
+  </div>
+  <p class="status" id="status">Chargement du calendrier…</p>
+
+  <section class="setup hidden" id="setup">
+    <h2>Charger le calendrier</h2>
+    <p style="margin:0;color:#BFD0CC">Aucune source n'a répondu (NBA officiel, puis ESPN). Deux solutions :</p>
+    <ol>
+      <li>Mettez le fichier <code>schedule.json</code> à côté de cette page (le script <code>build_schedule.py</code> le génère), puis Recharger.</li>
+      <li>Ou importez le fichier JSON à la main :
+        <div style="margin-top:8px"><input type="file" id="fileIn" accept=".json,application/json"></div>
+      </li>
+    </ol>
+  </section>
+
+  <main id="out"></main>
+
+  <footer>
+    Back-to-back = deux matchs sur deux jours calendaires consécutifs. Seul le <b>2<sup>e</sup> soir</b> est listé.<br>
+    Conversions horaires calculées avec les fuseaux réels (heure d'été américaine et européenne incluses).<br>
+    Données : calendrier officiel NBA, ou ESPN en secours (la source utilisée est indiquée en haut).<br>
+    Site non affilié à la NBA.
+  </footer>
+</div>
+
+<script>
+/* ============ 1. Équipes : fuseau de la salle ============ */
+const TEAMS = {
+  ATL:["Atlanta Hawks","America/New_York","State Farm Arena, Atlanta"],
+  BOS:["Boston Celtics","America/New_York","TD Garden, Boston"],
+  BKN:["Brooklyn Nets","America/New_York","Barclays Center, Brooklyn"],
+  CHA:["Charlotte Hornets","America/New_York","Spectrum Center, Charlotte"],
+  CHI:["Chicago Bulls","America/Chicago","United Center, Chicago"],
+  CLE:["Cleveland Cavaliers","America/New_York","Rocket Arena, Cleveland"],
+  DAL:["Dallas Mavericks","America/Chicago","American Airlines Center, Dallas"],
+  DEN:["Denver Nuggets","America/Denver","Ball Arena, Denver"],
+  DET:["Detroit Pistons","America/New_York","Little Caesars Arena, Detroit"],
+  GSW:["Golden State Warriors","America/Los_Angeles","Chase Center, San Francisco"],
+  HOU:["Houston Rockets","America/Chicago","Toyota Center, Houston"],
+  IND:["Indiana Pacers","America/Indiana/Indianapolis","Gainbridge Fieldhouse, Indianapolis"],
+  LAC:["LA Clippers","America/Los_Angeles","Intuit Dome, Inglewood"],
+  LAL:["Los Angeles Lakers","America/Los_Angeles","Crypto.com Arena, Los Angeles"],
+  MEM:["Memphis Grizzlies","America/Chicago","FedExForum, Memphis"],
+  MIA:["Miami Heat","America/New_York","Kaseya Center, Miami"],
+  MIL:["Milwaukee Bucks","America/Chicago","Fiserv Forum, Milwaukee"],
+  MIN:["Minnesota Timberwolves","America/Chicago","Target Center, Minneapolis"],
+  NOP:["New Orleans Pelicans","America/Chicago","Smoothie King Center, New Orleans"],
+  NYK:["New York Knicks","America/New_York","Madison Square Garden, New York"],
+  OKC:["Oklahoma City Thunder","America/Chicago","Paycom Center, Oklahoma City"],
+  ORL:["Orlando Magic","America/New_York","Kia Center, Orlando"],
+  PHI:["Philadelphia 76ers","America/New_York","Xfinity Mobile Arena, Philadelphie"],
+  PHX:["Phoenix Suns","America/Phoenix","Mortgage Matchup Center, Phoenix"],
+  POR:["Portland Trail Blazers","America/Los_Angeles","Moda Center, Portland"],
+  SAC:["Sacramento Kings","America/Los_Angeles","Golden 1 Center, Sacramento"],
+  SAS:["San Antonio Spurs","America/Chicago","Frost Bank Center, San Antonio"],
+  TOR:["Toronto Raptors","America/Toronto","Scotiabank Arena, Toronto"],
+  UTA:["Utah Jazz","America/Denver","Delta Center, Salt Lake City"],
+  WAS:["Washington Wizards","America/New_York","Capital One Arena, Washington"]
+};
+const name = t => (TEAMS[t]||[t])[0];
+const tzOf = t => (TEAMS[t]||[,"America/New_York"])[1];
+const arenaOf = t => (TEAMS[t]||[,,"—"])[2];
+
+/* Matchs sur terrain neutre : le fuseau est celui de la salle, pas de l'équipe hôte.
+   (Paris, Manchester, Mexico, Abu Dhabi, Berlin…) */
+const CITY_TZ={
+  "paris":"Europe/Paris","londres":"Europe/London","london":"Europe/London",
+  "manchester":"Europe/London","berlin":"Europe/Berlin","munich":"Europe/Berlin",
+  "abu dhabi":"Asia/Dubai","dubai":"Asia/Dubai","macau":"Asia/Macau",
+  "mexico city":"America/Mexico_City","ciudad de mexico":"America/Mexico_City",
+  "mexico":"America/Mexico_City","honolulu":"Pacific/Honolulu",
+  "vancouver":"America/Vancouver","montreal":"America/Toronto","montréal":"America/Toronto"
+};
+const cityKey=a=>{const p=String(a||"").split(",");return p.length>1?p[p.length-1].trim().toLowerCase():"";};
+const tzForVenue=(arena,home)=>CITY_TZ[cityKey(arena)]||tzOf(home);
+const tzForGame=g=>tzForVenue(g.arena,g.home);
+
+/* ============ 2. Fuseaux horaires ============ */
+function tzOffset(tz, d){
+  const f=new Intl.DateTimeFormat("en-US",{timeZone:tz,hour12:false,year:"numeric",month:"2-digit",
+    day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  const p={}; for(const x of f.formatToParts(d)) p[x.type]=x.value;
+  const h=p.hour==="24"?0:+p.hour;
+  return (Date.UTC(+p.year,+p.month-1,+p.day,h,+p.minute,+p.second)-d.getTime())/60000;
+}
+/* heure murale (dans tz) -> instant UTC */
+function wallToUtc(y,m,d,hh,mm,tz){
+  const g=Date.UTC(y,m-1,d,hh,mm);
+  let off=tzOffset(tz,new Date(g));
+  off=tzOffset(tz,new Date(g-off*60000));
+  return new Date(g-off*60000);
+}
+const HM=new Intl.DateTimeFormat("fr-FR",{timeZone:"Europe/Paris",hour:"2-digit",minute:"2-digit"});
+const frTime = d => HM.format(d).replace(":","h");
+const frDayTime = d => new Intl.DateTimeFormat("fr-FR",{timeZone:"Europe/Paris",weekday:"short",
+    day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}).format(d).replace(":","h");
+const frDate = iso => {
+  const [y,m,d]=iso.split("-").map(Number);
+  const s=new Intl.DateTimeFormat("fr-FR",{weekday:"long",day:"numeric",month:"long",
+    timeZone:"UTC"}).format(new Date(Date.UTC(y,m-1,d)));
+  return d===1 ? s.replace(" 1 "," 1er ") : s;   // "vendredi 1er janvier"
+};
+
+/* ============ 3. Chargement des données ============ */
+const SOURCES=[
+  {label:"schedule.json local", fn:()=>getJson("./schedule.json")},
+  {label:"CDN officiel NBA", fn:()=>getJson("https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json")},
+  {label:"CDN officiel NBA (v2_1)", fn:()=>getJson("https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json")},
+  {label:"ESPN", fn:()=>loadEspn()}
+];
+async function getJson(u){
+  const r=await fetch(u,{cache:"no-store"});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return r.json();
+}
+
+/* --- source ESPN : un appel par mois de la saison --- */
+const ESPN_ALIAS={NY:"NYK",GS:"GSW",SA:"SAS",UTAH:"UTA",WSH:"WAS",NO:"NOP",PHO:"PHX"};
+const fixTri=a=>ESPN_ALIAS[a]||a;
+const ESPN_RANGES=["20261001-20261031","20261101-20261130","20261201-20261231",
+  "20270101-20270131","20270201-20270228","20270301-20270331","20270401-20270430"];
+function isoFix(s){ return /T\d\d:\d\dZ$/.test(s)?s.replace(/Z$/,":00Z"):s; }
+function localDate(iso,tz){
+  return new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit"})
+    .format(new Date(isoFix(iso)));
+}
+async function loadEspn(){
+  const base="https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?limit=1000&dates=";
+  /* un mois manquant = des back-to-back invisibles : on réessaie, puis on échoue franchement */
+  const chunks=await Promise.all(ESPN_RANGES.map(async r=>{
+    try{ return await getJson(base+r); }
+    catch(e){
+      await new Promise(t=>setTimeout(t,1200));
+      try{ return await getJson(base+r); }
+      catch(e2){ throw new Error("mois "+r.slice(0,6)+" indisponible"); }
+    }
+  }));
+  const seen=new Set(), games=[];
+  for(const c of chunks){
+    for(const ev of (c&&c.events)||[]){
+      if(ev.season&&ev.season.type!==2) continue;          // saison régulière seulement
+      const comp=(ev.competitions||[])[0]; if(!comp) continue;
+      const cs=comp.competitors||[];
+      const H=cs.find(x=>x.homeAway==="home"), A=cs.find(x=>x.homeAway==="away");
+      if(!H||!A||!H.team||!A.team) continue;
+      const home=fixTri(H.team.abbreviation), away=fixTri(A.team.abbreviation);
+      const utc=isoFix(comp.date||ev.date);
+      const v=comp.venue||{};
+      const arena=[v.fullName,v.address&&v.address.city].filter(Boolean).join(", ");
+      const date=localDate(utc,tzForVenue(arena,home));
+      const key=date+home+away; if(seen.has(key)) continue; seen.add(key);
+      games.push({date,home,away,utc,label:"",arena});
+    }
+  }
+  if(games.length<500) throw new Error(games.length+" matchs seulement");
+  return games;
+}
+
+/* normalisation : accepte le JSON NBA, le JSON ESPN, ou un tableau simple */
+function normalize(raw){
+  let g=[];
+  if(raw && raw.leagueSchedule && raw.leagueSchedule.gameDates){
+    for(const gd of raw.leagueSchedule.gameDates){
+      const iso=usDateToIso(gd.gameDate);
+      for(const x of gd.games||[]){
+        const id=String(x.gameId||"");
+        if(id.slice(0,3)!=="002") continue;            // saison régulière seulement
+        const h=x.homeTeam&&x.homeTeam.teamTricode, a=x.awayTeam&&x.awayTeam.teamTricode;
+        if(!h||!a) continue;
+        g.push({date:iso,home:h,away:a,utc:x.gameDateTimeUTC||null,
+                label:(x.gameLabel||"").trim(),
+                arena:[x.arenaName,x.arenaCity].filter(Boolean).join(", ")});
+      }
+    }
+  }else if(Array.isArray(raw)){
+    g=raw.map(x=>({date:x.date,home:x.home,away:x.away,utc:x.utc||null,
+                   label:x.label||"",arena:x.arena||""})).filter(x=>x.date&&x.home&&x.away);
+  }else if(raw&&Array.isArray(raw.games)){
+    return normalize(raw.games);
+  }
+  return g;
+}
+function usDateToIso(s){                                 // "10/20/2026 00:00:00" -> "2026-10-20"
+  const m=String(s).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(!m) return String(s).slice(0,10);
+  return m[3]+"-"+m[1].padStart(2,"0")+"-"+m[2].padStart(2,"0");
+}
+
+/* ============ 4. Détection des back-to-back ============ */
+const dayNum = iso => Math.round(Date.parse(iso+"T00:00:00Z")/86400000);
+function findB2B(games){
+  const byTeam={};
+  for(const g of games)
+    for(const t of [g.home,g.away]) (byTeam[t]=byTeam[t]||[]).push(g);
+  const out=[];
+  for(const t in byTeam){
+    const list=byTeam[t].slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+    for(let i=1;i<list.length;i++){
+      if(dayNum(list[i].date)-dayNum(list[i-1].date)===1)
+        out.push({team:t,game:list[i],prev:list[i-1]});
+    }
+  }
+  out.sort((a,b)=> a.game.date<b.game.date?-1:a.game.date>b.game.date?1:name(a.team).localeCompare(name(b.team)));
+  return out;
+}
+
+/* ============ 5. Rendu ============ */
+let ALL=[], B2B=[], SECTIONS=[];
+const $=id=>document.getElementById(id);
+const todayIso=()=>new Intl.DateTimeFormat("en-CA",{year:"numeric",month:"2-digit",day:"2-digit"})
+  .format(new Date());
+function addDays(iso,n){
+  const [y,m,d]=iso.split("-").map(Number);
+  return new Date(Date.UTC(y,m-1,d+n)).toISOString().slice(0,10);
+}
+/* se place sur les matchs du jour, ou sur la prochaine date programmée */
+function jumpToToday(smooth){
+  const t=todayIso();
+  const target=SECTIONS.find(s=>s.date>=t);
+  if(!target||!target.el||!target.el.scrollIntoView) return false;
+  const still=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  target.el.scrollIntoView({behavior:(smooth&&!still)?"smooth":"auto",block:"start"});
+  return true;
+}
+
+function render(){
+  const out=$("out"); out.innerHTML="";
+  const refT=$("refTime").value||"13:30";
+  const [rh,rm]=refT.split(":").map(Number);
+  const team=$("teamSel").value, from=$("fromDate").value;
+  const list=B2B.filter(x=>(!team||x.team===team)&&(!from||x.game.date>=from));
+
+  if(!list.length){ out.innerHTML='<p class="status">Aucun back-to-back pour ce filtre.</p>'; return; }
+
+  let cur=null, day=null;
+  SECTIONS=[];
+  const today=todayIso(), tomorrow=addDays(today,1);
+  for(const item of list){
+    if(item.game.date!==cur){
+      cur=item.game.date;
+      day=document.createElement("section"); day.className="day";
+      day.setAttribute("data-date",cur);
+      SECTIONS.push({date:cur,el:day});
+      const badge = cur===today ? '<span class="badge">aujourd\'hui</span>'
+                  : cur===tomorrow ? '<span class="badge soon">demain</span>' : '';
+      const head=document.createElement("div"); head.className="day-head";
+      head.innerHTML='<span class="day-date">'+frDate(cur)+'</span>'+badge+
+        '<span class="day-count">'+countOn(list,cur)+' équipe(s)</span>';
+      day.appendChild(head); out.appendChild(day);
+      /* regroupement par heure française pour cette date */
+      const groups=new Map();
+      for(const it of list.filter(x=>x.game.date===cur)){
+        const [y,m,d]=it.game.date.split("-").map(Number);
+        const ref=wallToUtc(y,m,d,rh,rm,tzForGame(it.game));
+        const key=frTime(ref);
+        if(!groups.has(key)) groups.set(key,{ts:ref.getTime(),items:[]});
+        groups.get(key).items.push(it);
+      }
+      for(const [hh,grp] of [...groups.entries()].sort((a,b)=>a[1].ts-b[1].ts)){
+        const hd=document.createElement("div"); hd.className="hour";
+        hd.innerHTML='<span class="hh">'+hh+'</span>';
+        day.appendChild(hd);
+        for(const it of grp.items) day.appendChild(rowFor(it,rh,rm));
+      }
+    }
+  }
+  const total=list.length;
+  const short = ALL.length && ALL.length<1200
+    ? ' · <span style="color:var(--hot)">calendrier peut-être incomplet</span>' : '';
+  $("status").innerHTML="<b>"+total+"</b> seconds soirs de back-to-back · <b>"+ALL.length+
+    "</b> matchs de saison régulière chargés"+short;
+}
+const countOn=(l,d)=>l.filter(x=>x.game.date===d).length;
+
+function rowFor(item,rh,rm){
+  const box=document.createElement("div");
+  const g=item.game, isHome=g.home===item.team;
+  const btn=document.createElement("button");
+  btn.className="b2b"; btn.setAttribute("aria-expanded","false");
+  btn.innerHTML='<span><span class="team">'+name(item.team)+'</span><br>'+
+    '<span class="vs">'+(isHome?"reçoit "+name(g.away):"à "+name(g.home))+'</span></span>'+
+    '<span class="tag">2<sup>e</sup> soir</span><span class="chev">+</span>';
+  const card=document.createElement("div"); card.className="card hidden";
+  card.innerHTML=cardHtml(item,rh,rm);
+  btn.onclick=()=>{
+    const open=card.classList.toggle("hidden");
+    btn.setAttribute("aria-expanded",String(!open));
+    btn.querySelector(".chev").textContent=open?"+":"−";
+  };
+  box.appendChild(btn); box.appendChild(card);
+  return box;
+}
+
+function cardHtml(item,rh,rm){
+  const g=item.game, p=item.prev;
+  const arena=g.arena||arenaOf(g.home);
+  const tz=tzForVenue(arena,g.home);
+  const neutral=tz!==tzOf(g.home);
+  const [y,m,d]=g.date.split("-").map(Number);
+  const ref=wallToUtc(y,m,d,rh,rm,tz);
+  const refLbl=String(rh).padStart(2,"0")+"h"+String(rm).padStart(2,"0");
+  const tip=g.utc?new Date(g.utc):null;
+  const prevSide=p.home===item.team?("reçu "+name(p.away)):("joué à "+name(p.home));
+
+  return '<p class="match">'+name(g.away)+'<span class="at">@</span>'+name(g.home)+'</p>'+
+   '<div class="rows">'+
+     row("Reçoit",'<span class="host">'+name(g.home)+'</span> — '+arena+
+        (neutral?' <span style="color:var(--hot)">(terrain neutre)</span>':''))+
+     row("Déplacement",name(g.away))+
+     row("La veille",frDate(p.date).replace(/^./,c=>c.toUpperCase())+" — "+name(item.team)+" a "+prevSide)+
+     (tip?row("Tip-off",frDayTime(tip)+" (heure française)"):"")+
+     (g.label?row("Compétition",g.label):"")+
+   '</div>'+
+   '<div class="office">'+
+     '<span class="lbl">Heure française quand il est '+refLbl+' à '+cityOf(arena,g.home)+'</span>'+
+     '<span class="big">'+frTime(ref)+'<small>heure de Paris</small></span>'+
+   '</div>';
+}
+const row=(k,v)=>'<div class="row"><span class="k">'+k+'</span><span class="v">'+v+'</span></div>';
+function cityOf(arena,tri){
+  const parts=String(arena).split(",");
+  return (parts.length>1?parts[parts.length-1]:String(arenaOf(tri)).split(",").pop()).trim()||name(tri);
+}
+
+/* ============ 6. Démarrage ============ */
+async function boot(){
+  $("setup").classList.add("hidden");
+  $("status").className="status"; $("status").textContent="Chargement du calendrier…";
+  const errs=[];
+  for(const s of SOURCES){
+    try{
+      const games=normalize(await s.fn());
+      if(games.length>500){ install(games,s.label); return; }
+      errs.push(s.label+" : format inattendu");
+    }catch(e){ errs.push(s.label+" : "+e.message); }
+  }
+  $("status").className="status err";
+  $("status").textContent="Calendrier non chargé — "+errs.join(" · ");
+  $("setup").classList.remove("hidden");
+}
+function install(games,src){
+  ALL=games; B2B=findB2B(games);
+  const sel=$("teamSel"), keep=sel.value;
+  sel.innerHTML='<option value="">Toutes les équipes</option>';
+  [...new Set(B2B.map(x=>x.team))].sort((a,b)=>name(a).localeCompare(name(b)))
+    .forEach(t=>{const o=document.createElement("option");o.value=t;o.textContent=name(t);sel.appendChild(o);});
+  sel.value=keep;
+  render();
+  $("status").innerHTML+=' · source : '+src;
+  jumpToToday(false);            // on ouvre directement sur les matchs du jour
+}
+
+$("refTime").addEventListener("change",render);
+$("teamSel").addEventListener("change",render);
+$("fromDate").addEventListener("change",render);
+$("reload").addEventListener("click",boot);
+$("todayBtn").addEventListener("click",()=>{
+  $("fromDate").value=todayIso(); render(); jumpToToday(true);
+});
+$("allBtn").addEventListener("click",()=>{
+  $("fromDate").value=""; render(); jumpToToday(true);
+});
+$("fileIn").addEventListener("change",async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  try{
+    const games=normalize(JSON.parse(await f.text()));
+    if(!games.length) throw new Error("aucun match reconnu dans ce fichier");
+    install(games,f.name); $("setup").classList.add("hidden"); $("status").className="status";
+  }catch(err){ $("status").className="status err"; $("status").textContent="Import impossible : "+err.message; }
+});
+
+/* on n'affiche par défaut que les matchs à venir (date locale, pas UTC) */
+$("fromDate").value=todayIso();
+boot();
+</script>
+</body>
+</html>

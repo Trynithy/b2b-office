@@ -185,7 +185,7 @@
 
   <section class="setup hidden" id="setup">
     <h2>Charger le calendrier</h2>
-    <p style="margin:0;color:#BFD0CC">Aucune source n'a répondu (NBA officiel, puis ESPN). Deux solutions :</p>
+    <p style="margin:0;color:#BFD0CC">Aucune source n'a répondu (mise à jour automatique, NBA, ESPN). Vérifiez la connexion puis Recharger, ou :</p>
     <ol>
       <li>Mettez le fichier <code>schedule.json</code> à côté de cette page (le script <code>build_schedule.py</code> le génère), puis Recharger.</li>
       <li>Ou importez le fichier JSON à la main :
@@ -199,7 +199,7 @@
   <footer>
     Back-to-back = deux matchs sur deux jours calendaires consécutifs. Seul le <b>2<sup>e</sup> soir</b> est listé.<br>
     Conversions horaires calculées avec les fuseaux réels (heure d'été américaine et européenne incluses).<br>
-    Données : calendrier officiel NBA, ou ESPN en secours (la source utilisée est indiquée en haut).<br>
+    Données : calendrier mis à jour chaque jour automatiquement (ESPN / NBA). La source et l'heure de mise à jour sont indiquées en haut.<br>
     Site non affilié à la NBA.
   </footer>
 </div>
@@ -250,9 +250,11 @@ const CITY_TZ={
   "abu dhabi":"Asia/Dubai","dubai":"Asia/Dubai","macau":"Asia/Macau",
   "mexico city":"America/Mexico_City","ciudad de mexico":"America/Mexico_City",
   "mexico":"America/Mexico_City","honolulu":"Pacific/Honolulu",
-  "vancouver":"America/Vancouver","montreal":"America/Toronto","montréal":"America/Toronto"
+  "vancouver":"America/Vancouver","montreal":"America/Toronto","cdmx":"America/Mexico_City"
 };
-const cityKey=a=>{const p=String(a||"").split(",");return p.length>1?p[p.length-1].trim().toLowerCase():"";};
+/* insensible aux accents et à la casse : "Ciudad de México" = "ciudad de mexico" */
+const cityKey=a=>{const p=String(a||"").split(",");
+  return p.length>1?p[p.length-1].trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,""):"";};
 const tzForVenue=(arena,home)=>CITY_TZ[cityKey(arena)]||tzOf(home);
 const tzForGame=g=>tzForVenue(g.arena,g.home);
 
@@ -283,58 +285,92 @@ const frDate = iso => {
 };
 
 /* ============ 3. Chargement des données ============ */
-const SOURCES=[
-  {label:"schedule.json local", fn:()=>getJson("./schedule.json")},
-  {label:"CDN officiel NBA", fn:()=>getJson("https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json")},
-  {label:"CDN officiel NBA (v2_1)", fn:()=>getJson("https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json")},
-  {label:"ESPN", fn:()=>loadEspn()}
-];
+/* Saison régulière 2026-27 : du 20 octobre 2026 au 11 avril 2027 */
+const SEASON_START="2026-10-20", SEASON_END="2027-04-11";
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
 async function getJson(u){
   const r=await fetch(u,{cache:"no-store"});
   if(!r.ok) throw new Error("HTTP "+r.status);
   return r.json();
 }
 
-/* --- source ESPN : un appel par mois de la saison --- */
+/* --- Source 1 : schedule.json généré chaque jour par GitHub Actions ---
+   On lit la copie servie par Pages ET la copie brute du dépôt (mise à jour plus vite),
+   et on garde la plus récente. */
+function rawUrl(){
+  const m=location.hostname.match(/^([^.]+)\.github\.io$/i);
+  const repo=location.pathname.split("/").filter(Boolean)[0];
+  return (m&&repo) ? "https://raw.githubusercontent.com/"+m[1]+"/"+repo+"/main/schedule.json" : null;
+}
+async function loadPrebuilt(){
+  const urls=["./schedule.json"], r=rawUrl(); if(r) urls.push(r);
+  const res=await Promise.allSettled(urls.map(getJson));
+  const ok=res.filter(x=>x.status==="fulfilled").map(x=>Array.isArray(x.value)?{games:x.value}:x.value)
+              .filter(v=>v&&Array.isArray(v.games)&&v.games.length);
+  if(!ok.length) throw new Error("fichier absent");
+  ok.sort((a,b)=>String(b.generated_at||"").localeCompare(String(a.generated_at||"")));
+  return {games:normalize(ok[0].games), generatedAt:ok[0].generated_at||null, partial:false};
+}
+
+/* --- Source 2 : CDN officiel NBA (souvent bloqué depuis 2026, gardé au cas où) --- */
+async function loadNba(){
+  for(const u of ["https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json",
+                  "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json"]){
+    try{ const g=normalize(await getJson(u)); if(g.length>1000) return {games:g,partial:false}; }
+    catch(e){}
+  }
+  throw new Error("accès refusé");
+}
+
+/* --- Source 3 : ESPN, un appel PAR JOUR ---
+   Depuis octobre 2026, ESPN refuse les requêtes sur une plage de dates (erreur 400) :
+   seules les requêtes jour par jour fonctionnent. On ne charge qu'à partir d'hier
+   pour limiter le volume. */
 const ESPN_ALIAS={NY:"NYK",GS:"GSW",SA:"SAS",UTAH:"UTA",WSH:"WAS",NO:"NOP",PHO:"PHX"};
 const fixTri=a=>ESPN_ALIAS[a]||a;
-const ESPN_RANGES=["20261001-20261031","20261101-20261130","20261201-20261231",
-  "20270101-20270131","20270201-20270228","20270301-20270331","20270401-20270430"];
+const ESPN_DAY="https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=";
 function isoFix(s){ return /T\d\d:\d\dZ$/.test(s)?s.replace(/Z$/,":00Z"):s; }
-function localDate(iso,tz){
-  return new Intl.DateTimeFormat("en-CA",{timeZone:tz,year:"numeric",month:"2-digit",day:"2-digit"})
-    .format(new Date(isoFix(iso)));
+function parseEspnDay(json,iso){
+  const out=[];
+  for(const ev of (json&&json.events)||[]){
+    if(ev.season&&String(ev.season.type)!=="2") continue;  // saison régulière seulement
+    const st=String((((ev.status||{}).type)||{}).name||"");
+    if(/POSTPONED|CANCELED/.test(st)) continue;             // match reporté/annulé
+    const comp=(ev.competitions||[])[0]; if(!comp) continue;
+    const cs=comp.competitors||[];
+    const H=cs.find(x=>x.homeAway==="home"), A=cs.find(x=>x.homeAway==="away");
+    if(!H||!A||!H.team||!A.team) continue;
+    const home=fixTri(H.team.abbreviation), away=fixTri(A.team.abbreviation);
+    if(!TEAMS[home]||!TEAMS[away]) continue;                 // ex. "TBD" de la NBA Cup
+    const v=comp.venue||{};
+    out.push({date:iso, home, away,
+      utc:isoFix(comp.date||ev.date), label:"",
+      arena:[v.fullName,v.address&&v.address.city].filter(Boolean).join(", ")});
+  }
+  return out;
 }
-async function loadEspn(){
-  const base="https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?limit=1000&dates=";
-  /* un mois manquant = des back-to-back invisibles : on réessaie, puis on échoue franchement */
-  const chunks=await Promise.all(ESPN_RANGES.map(async r=>{
-    try{ return await getJson(base+r); }
-    catch(e){
-      await new Promise(t=>setTimeout(t,1200));
-      try{ return await getJson(base+r); }
-      catch(e2){ throw new Error("mois "+r.slice(0,6)+" indisponible"); }
-    }
-  }));
-  const seen=new Set(), games=[];
-  for(const c of chunks){
-    for(const ev of (c&&c.events)||[]){
-      if(ev.season&&ev.season.type!==2) continue;          // saison régulière seulement
-      const comp=(ev.competitions||[])[0]; if(!comp) continue;
-      const cs=comp.competitors||[];
-      const H=cs.find(x=>x.homeAway==="home"), A=cs.find(x=>x.homeAway==="away");
-      if(!H||!A||!H.team||!A.team) continue;
-      const home=fixTri(H.team.abbreviation), away=fixTri(A.team.abbreviation);
-      const utc=isoFix(comp.date||ev.date);
-      const v=comp.venue||{};
-      const arena=[v.fullName,v.address&&v.address.city].filter(Boolean).join(", ");
-      const date=localDate(utc,tzForVenue(arena,home));
-      const key=date+home+away; if(seen.has(key)) continue; seen.add(key);
-      games.push({date,home,away,utc,label:"",arena});
+async function loadEspnDaily(onProgress){
+  let start=addDays(todayIso(),-1); if(start<SEASON_START) start=SEASON_START;
+  if(start>SEASON_END) throw new Error("saison terminée");
+  const days=[]; for(let d=start; d<=SEASON_END; d=addDays(d,1)) days.push(d);
+  const out=[], failed=[]; let next=0, done=0;
+  async function worker(){
+    while(next<days.length){
+      const d=days[next++]; let json=null;
+      for(let k=0;k<3&&!json;k++){
+        try{ json=await getJson(ESPN_DAY+d.replace(/-/g,"")); }
+        catch(e){ await sleep(700*(k+1)); }
+      }
+      if(json) out.push(...parseEspnDay(json,d)); else failed.push(d);
+      onProgress&&onProgress(++done,days.length);
     }
   }
-  if(games.length<500) throw new Error(games.length+" matchs seulement");
-  return games;
+  await Promise.all(Array.from({length:6},worker));       // 6 requêtes en parallèle
+  if(!out.length) throw new Error("aucune réponse");
+  const seen=new Set(), games=out.filter(g=>{const k=g.date+g.home+g.away;
+    if(seen.has(k)) return false; seen.add(k); return true;});
+  return {games, partial:true, failed:failed.sort()};
 }
 
 /* normalisation : accepte le JSON NBA, le JSON ESPN, ou un tableau simple */
@@ -386,7 +422,7 @@ function findB2B(games){
 }
 
 /* ============ 5. Rendu ============ */
-let ALL=[], B2B=[], SECTIONS=[];
+let ALL=[], B2B=[], SECTIONS=[], META={};
 const $=id=>document.getElementById(id);
 const todayIso=()=>new Intl.DateTimeFormat("en-CA",{year:"numeric",month:"2-digit",day:"2-digit"})
   .format(new Date());
@@ -411,6 +447,7 @@ function render(){
   const team=$("teamSel").value, from=$("fromDate").value;
   const list=B2B.filter(x=>(!team||x.team===team)&&(!from||x.game.date>=from));
 
+  setStatus(list.length);
   if(!list.length){ out.innerHTML='<p class="status">Aucun back-to-back pour ce filtre.</p>'; return; }
 
   let cur=null, day=null;
@@ -445,11 +482,21 @@ function render(){
       }
     }
   }
-  const total=list.length;
-  const short = ALL.length && ALL.length<1200
-    ? ' · <span style="color:var(--hot)">calendrier peut-être incomplet</span>' : '';
-  $("status").innerHTML="<b>"+total+"</b> seconds soirs de back-to-back · <b>"+ALL.length+
-    "</b> matchs de saison régulière chargés"+short;
+}
+function setStatus(total){
+  const warn=t=>' · <span style="color:var(--hot)">'+t+'</span>';
+  let s="<b>"+total+"</b> seconds soirs de back-to-back · <b>"+ALL.length+"</b> matchs chargés";
+  if(META.src) s+=" · source : "+META.src;
+  if(META.generatedAt){
+    const d=new Date(META.generatedAt);
+    if(!isNaN(d)) s+=" · mis à jour le "+new Intl.DateTimeFormat("fr-FR",{timeZone:"Europe/Paris",
+      day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}).format(d).replace(":","h");
+  }
+  if(META.partial) s+=" (à partir d'hier)";
+  if(!META.partial && ALL.length && ALL.length<1150) s+=warn("calendrier peut-être incomplet");
+  if(META.failed&&META.failed.length) s+=warn(META.failed.length+" jour(s) non chargé(s) : "+
+    META.failed.slice(0,3).map(frDate).join(", ")+(META.failed.length>3?"…":""));
+  $("status").className="status"; $("status").innerHTML=s;
 }
 const countOn=(l,d)=>l.filter(x=>x.game.date===d).length;
 
@@ -504,22 +551,35 @@ function cityOf(arena,tri){
 }
 
 /* ============ 6. Démarrage ============ */
+const SOURCES=[
+  {label:"mise à jour automatique", fn:loadPrebuilt},
+  {label:"NBA officiel", fn:loadNba},
+  {label:"ESPN en direct", fn:()=>loadEspnDaily((a,b)=>{
+     $("status").textContent="Chargement depuis ESPN : "+a+" / "+b+" jours…"; })}
+];
+let booting=false;
 async function boot(){
+  if(booting) return; booting=true;
   $("setup").classList.add("hidden");
-  $("status").className="status"; $("status").textContent="Chargement du calendrier…";
+  $("status").className="status";
   const errs=[];
-  for(const s of SOURCES){
-    try{
-      const games=normalize(await s.fn());
-      if(games.length>500){ install(games,s.label); return; }
-      errs.push(s.label+" : format inattendu");
-    }catch(e){ errs.push(s.label+" : "+e.message); }
-  }
-  $("status").className="status err";
-  $("status").textContent="Calendrier non chargé — "+errs.join(" · ");
-  $("setup").classList.remove("hidden");
+  try{
+    for(const s of SOURCES){
+      $("status").textContent="Chargement du calendrier ("+s.label+")…";
+      try{
+        const res=await s.fn();
+        if(res&&res.games&&res.games.length){ install(res,s.label); return; }
+        errs.push(s.label+" : vide");
+      }catch(e){ errs.push(s.label+" : "+e.message); }
+    }
+    $("status").className="status err";
+    $("status").textContent="Calendrier non chargé — "+errs.join(" · ");
+    $("setup").classList.remove("hidden");
+  }finally{ booting=false; }
 }
-function install(games,src){
+function install(res,src){
+  const games=res.games;
+  META={src, generatedAt:res.generatedAt||null, partial:!!res.partial, failed:res.failed||[]};
   ALL=games; B2B=findB2B(games);
   const sel=$("teamSel"), keep=sel.value;
   sel.innerHTML='<option value="">Toutes les équipes</option>';
@@ -527,7 +587,6 @@ function install(games,src){
     .forEach(t=>{const o=document.createElement("option");o.value=t;o.textContent=name(t);sel.appendChild(o);});
   sel.value=keep;
   render();
-  $("status").innerHTML+=' · source : '+src;
   jumpToToday(false);            // on ouvre directement sur les matchs du jour
 }
 
@@ -544,9 +603,10 @@ $("allBtn").addEventListener("click",()=>{
 $("fileIn").addEventListener("change",async e=>{
   const f=e.target.files[0]; if(!f) return;
   try{
-    const games=normalize(JSON.parse(await f.text()));
+    const raw=JSON.parse(await f.text());
+    const games=normalize(raw&&raw.games&&!raw.leagueSchedule?raw.games:raw);
     if(!games.length) throw new Error("aucun match reconnu dans ce fichier");
-    install(games,f.name); $("setup").classList.add("hidden"); $("status").className="status";
+    install({games},f.name); $("setup").classList.add("hidden");
   }catch(err){ $("status").className="status err"; $("status").textContent="Import impossible : "+err.message; }
 });
 
